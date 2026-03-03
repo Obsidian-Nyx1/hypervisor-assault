@@ -115,6 +115,9 @@ declare -A HYPERVISOR_BANNERS=(
     ["oVirt"]="oVirt|RHEV|rhevm"
 )
 
+GUEST_VM_PORTS="22 80 443 445 3389 21 25 53 110 143 993 995 1433 1521 3306 5432 6379 8080 8443"
+HYPERVISOR_MGMT_PORTS="80 111 139 443 445 548 902 903 2179 2375 2376 3128 4172 427 5000 5432 5900 5901 5985 5986 6443 8006 8080 8090 8100 8443 8700 8774 8776 8778 8899 9090 9440 9443 9696 10250 13007 16509 16514 18083 2020 2030"
+
 # =============================================================================
 # PRINT BANNER
 # =============================================================================
@@ -378,6 +381,126 @@ discover_hypervisor() {
     
     # Return detected hypervisor
     echo "$detected_hv:$confidence"
+}
+
+classify_target_role() {
+    local target="$1"
+    local hv_type="$2"
+    local confidence="$3"
+    local output_file="$4"
+    local mgmt_hits=0
+    local guest_hits=0
+    local guest_ports_hit=""
+    local mgmt_ports_hit=""
+    local path_hits=0
+    local role="Inconclusive"
+    local rationale=""
+    local top_risk_layer="Unknown"
+
+    echo -e "${CYAN}  ├─ Assessing whether $target is a hypervisor host, management plane, or guest VM...${NC}"
+
+    for port in $HYPERVISOR_MGMT_PORTS; do
+        if timeout 2 nc -z "$target" "$port" >/dev/null 2>&1; then
+            ((mgmt_hits+=1))
+            mgmt_ports_hit+="${port}/tcp "
+        fi
+    done
+
+    for port in $GUEST_VM_PORTS; do
+        if timeout 2 nc -z "$target" "$port" >/dev/null 2>&1; then
+            ((guest_hits+=1))
+            guest_ports_hit+="${port}/tcp "
+        fi
+    done
+
+    for scheme in https http; do
+        for port in 80 443 8006 8443 9443; do
+            for path in /ui /vsphere-client /sdk /api2/json /xapi /ovirt-engine /prism /wsman; do
+                status=$(timeout 3 curl -sk -o /dev/null -w "%{http_code}" "${scheme}://$target:$port$path" 2>/dev/null)
+                if [ "$status" = "200" ] || [ "$status" = "401" ] || [ "$status" = "302" ]; then
+                    ((path_hits+=1))
+                fi
+            done
+        done
+    done
+
+    if [ -n "$hv_type" ] && [ "${confidence:-0}" -ge 45 ] && { [ "$mgmt_hits" -ge 2 ] || [ "$path_hits" -ge 1 ]; }; then
+        role="Likely hypervisor host or management plane"
+        top_risk_layer="Hypervisor layer"
+        rationale="Strong hypervisor fingerprints plus exposed management services/UI paths."
+    elif [ -n "$hv_type" ] && [[ "$hv_type" == *"vCenter"* || "$hv_type" == *"SCVMM"* || "$hv_type" == *"OpenStack"* || "$hv_type" == *"Nutanix"* || "$hv_type" == *"OneView"* || "$hv_type" == *"UCS"* ]]; then
+        role="Likely hypervisor management plane"
+        top_risk_layer="Hypervisor layer"
+        rationale="Control-plane product detected; compromise would affect multiple guest systems."
+    elif [ -z "$hv_type" ] && [ "$guest_hits" -ge 2 ] && [ "$mgmt_hits" -eq 0 ]; then
+        role="Likely guest VM or general-purpose host"
+        top_risk_layer="Guest layer"
+        rationale="General guest-service exposure without strong hypervisor management indicators."
+    elif [ -n "$hv_type" ] && [ "${confidence:-0}" -lt 45 ] && [ "$guest_hits" -ge "$mgmt_hits" ]; then
+        role="Possibly guest VM with virtualization artifacts"
+        top_risk_layer="Guest layer"
+        rationale="Some virtualization hints exist, but the exposed surface looks more like a workload than a hypervisor."
+    else
+        role="Inconclusive"
+        top_risk_layer="Needs verification"
+        rationale="The exposed services do not clearly separate hypervisor management from guest workload behavior."
+    fi
+
+    {
+        echo ""
+        echo "=== TARGET ROLE ASSESSMENT ==="
+        echo "Question answered: Is this IP a hypervisor host or a guest VM?"
+        echo "  - Classification: $role"
+        echo "  - Primary risk layer: $top_risk_layer"
+        echo "  - Rationale: $rationale"
+        if [ -n "$mgmt_ports_hit" ]; then
+            echo "  - Hypervisor/management ports observed: ${mgmt_ports_hit% }"
+        fi
+        if [ -n "$guest_ports_hit" ]; then
+            echo "  - Guest/workload ports observed: ${guest_ports_hit% }"
+        fi
+        echo "  - Management/UI path hits: $path_hits"
+        echo "=============================="
+        echo ""
+    } >> "$output_file"
+
+    echo "$role|$top_risk_layer|$rationale"
+}
+
+write_risk_layer_summary() {
+    local target="$1"
+    local role="$2"
+    local hv_type="$3"
+    local confidence="$4"
+    local output_file="$5"
+
+    {
+        echo ""
+        echo "=== RISK LAYER SUMMARY ==="
+        echo "Question answered: Where do the risks lie?"
+        echo "  - Hypervisor layer risk: The hypervisor or its management plane is a shared control boundary; compromise can cascade across multiple guest VMs."
+        echo "  - Guest layer risk: Each guest VM remains its own attack surface through OS, middleware, and application exposure."
+
+        case "$role" in
+            "Likely hypervisor host or management plane"|"Likely hypervisor management plane")
+                echo "  - Assessment for $target: prioritize hypervisor-layer hardening first."
+                echo "  - Focus areas: exposed management ports, web consoles/APIs, remote admin protocols, patch level, MFA, segmentation, and least privilege."
+                [ -n "$hv_type" ] && echo "  - Product context: detected ${hv_type} at ${confidence}% confidence."
+                ;;
+            "Likely guest VM or general-purpose host"|"Possibly guest VM with virtualization artifacts")
+                echo "  - Assessment for $target: prioritize guest-layer review first."
+                echo "  - Focus areas: OS patching, service exposure, application vulnerabilities, credential hygiene, EDR/logging, and lateral movement controls."
+                echo "  - Hypervisor risk still matters, but this IP does not currently look like the shared management boundary."
+                ;;
+            *)
+                echo "  - Assessment for $target: evidence is mixed, so review both layers."
+                echo "  - Next checks: validate ownership of the IP, correlate with CMDB/virtualization inventory, and compare observed ports against expected management interfaces."
+                ;;
+        esac
+
+        echo "=========================="
+        echo ""
+    } >> "$output_file"
 }
 
 # =============================================================================
@@ -715,6 +838,10 @@ scan_target() {
     local target="$1"
     local output_file="$2"
     local start_time=$(date +%s)
+    local role_assessment=""
+    local target_role=""
+    local top_risk_layer=""
+    local role_rationale=""
     
     echo -e "\n${PURPLE}${BOLD}═══════════════════════════════════════════════════════════════════${NC}"
     echo -e "${PURPLE}${BOLD}              SCANNING TARGET: $target${NC}"
@@ -724,6 +851,11 @@ scan_target() {
     discovery_result=$(discover_hypervisor "$target" "$output_file")
     hv_type=$(echo "$discovery_result" | cut -d':' -f1)
     confidence=$(echo "$discovery_result" | cut -d':' -f2)
+
+    role_assessment=$(classify_target_role "$target" "$hv_type" "$confidence" "$output_file")
+    target_role=$(echo "$role_assessment" | cut -d'|' -f1)
+    top_risk_layer=$(echo "$role_assessment" | cut -d'|' -f2)
+    role_rationale=$(echo "$role_assessment" | cut -d'|' -f3-)
     
     # PHASE 2: If hypervisor found, do deep dive
     if [ -n "$hv_type" ] && [ "$confidence" -gt 30 ]; then
@@ -754,6 +886,8 @@ scan_target() {
             
         } >> "$output_file" 2>/dev/null
     fi
+
+    write_risk_layer_summary "$target" "$target_role" "$hv_type" "$confidence" "$output_file"
     
     # FINAL: Summary for this target
     local end_time=$(date +%s)
@@ -766,16 +900,22 @@ scan_target() {
         echo "Duration: $duration seconds"
         echo "Hypervisor detected: ${hv_type:-None}"
         echo "Confidence: ${confidence:-0}%"
+        echo "Target role: ${target_role:-Inconclusive}"
+        echo "Primary risk layer: ${top_risk_layer:-Unknown}"
+        echo "Role rationale: ${role_rationale:-None}"
         echo "═══════════════════════════════════════════════════════════════════════"
         echo ""
     } >> "$output_file"
     
     echo -e "\n${GREEN}[✓] Completed scan on $target (${duration}s)${NC}"
     echo -e "${GREEN}[✓] Hypervisor: ${hv_type:-None} (${confidence:-0}% confidence)${NC}"
+    echo -e "${GREEN}[✓] Role: ${target_role:-Inconclusive} | Risk focus: ${top_risk_layer:-Unknown}${NC}"
 
     {
         echo "[+] Completed scan on $target (${duration}s)"
         echo "[+] Hypervisor: ${hv_type:-None} (${confidence:-0}% confidence)"
+        echo "[+] Role: ${target_role:-Inconclusive}"
+        echo "[+] Risk focus: ${top_risk_layer:-Unknown}"
         echo ""
     } >> "$output_file"
 }
