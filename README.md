@@ -15,6 +15,12 @@ Educational purposes and authorized testing only. Scan only systems you own or w
   - What scans were performed
   - What was found (hypervisor type, confidence, evidence)
 
+## Important: VMware Guest vs VMware Hypervisor
+- A normal VM running inside VMware Workstation/Fusion usually looks like a regular Windows/Linux host on the network.
+- This project primarily detects exposed hypervisor or management services such as ESXi, vCenter, Proxmox, Hyper-V, and similar platforms.
+- If you scan a guest VM that only exposes ports like `22`, `80`, or `3389`, the tool may show little or no hypervisor-specific evidence because the guest is not itself the hypervisor.
+- To get results, make sure the VM is reachable on the network and that you are scanning the guest's actual IP address or an ESXi/vCenter management IP, depending on what you want to test.
+
 ## Quick Start
 ```bash
 cd hypervisor-assault

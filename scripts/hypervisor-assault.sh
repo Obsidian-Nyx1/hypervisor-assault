@@ -126,6 +126,7 @@ port_scan() {
   local targets_file="$1"
   local out="${OUTPUT_DIR}/02_open_ports.txt"
   mkdir -p "$OUTPUT_DIR"
+  : > "$out"
 
   if command -v masscan >/dev/null 2>&1; then
     warn "masscan detected; using it with rate=${RATE} (requires sudo)."
@@ -139,11 +140,25 @@ port_scan() {
   if [[ ! -s "$out" ]]; then
     warn "Using nmap connect scan on common ports (no sudo required for -sT)."
     nmap -sT -p "$PORTS_COMMON" -iL "$targets_file" --open -oG - 2>/dev/null \
-      | awk '/Ports:/{print $2}' | sort -u > "$out" || true
+      | awk '
+          /Ports:/ {
+            ip=$2
+            line=$0
+            sub(/^.*Ports: /, "", line)
+            split(line, entries, /, /)
+            for (i in entries) {
+              split(entries[i], f, "/")
+              if (f[2] == "open") {
+                print ip ":" f[1]
+              }
+            }
+          }
+        ' | sort -u > "$out" || true
   fi
 
   if [[ ! -s "$out" ]]; then
-    echo "# NO OPEN PORTS DETECTED" > "$out"
+    echo "# NO OPEN HYPERVISOR PORTS DETECTED" > "$out"
+    echo "# If the target is a normal VMware guest OS, that is expected unless the guest exposes one of: ${PORTS_COMMON}" >> "$out"
   fi
 
   echo "$out"
