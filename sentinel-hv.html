@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SENTINEL-HV</title>
+  <style>
+    :root {
+      --bg: #08111f;
+      --bg-soft: #101c30;
+      --panel: rgba(10, 18, 32, 0.86);
+      --line: rgba(113, 168, 255, 0.24);
+      --text: #e8f0ff;
+      --muted: #9fb0d1;
+      --accent: #79b8ff;
+      --accent-2: #3de0c2;
+      --warn: #ffc857;
+      --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+      --mono: "JetBrains Mono", "Fira Code", "SFMono-Regular", Consolas, monospace;
+      --sans: "Space Grotesk", "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(circle at top, rgba(61, 224, 194, 0.12), transparent 24rem),
+        radial-gradient(circle at right, rgba(121, 184, 255, 0.16), transparent 26rem),
+        linear-gradient(180deg, #07101b 0%, #091322 38%, #050b13 100%);
+      min-height: 100vh;
+    }
+
+    .frame {
+      width: min(1180px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 2rem 0 4rem;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(135deg, rgba(14, 28, 48, 0.94), rgba(6, 12, 22, 0.94));
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      box-shadow: var(--shadow);
+      padding: 2rem;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -8rem -8rem auto;
+      width: 22rem;
+      height: 22rem;
+      background: radial-gradient(circle, rgba(121, 184, 255, 0.18), transparent 68%);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      display: inline-block;
+      padding: 0.35rem 0.7rem;
+      border: 1px solid rgba(61, 224, 194, 0.35);
+      border-radius: 999px;
+      color: var(--accent-2);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 0.78rem;
+    }
+
+    h1, h2, h3 {
+      margin: 0;
+      line-height: 1.05;
+    }
+
+    h1 {
+      margin-top: 1rem;
+      font-size: clamp(2.4rem, 6vw, 4.8rem);
+      letter-spacing: -0.05em;
+    }
+
+    .subtitle {
+      margin-top: 0.9rem;
+      max-width: 56rem;
+      color: var(--muted);
+      font-size: 1.03rem;
+      line-height: 1.7;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 1.5rem;
+      align-items: end;
+      margin-top: 1.8rem;
+    }
+
+    .ascii-card,
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 1.25rem;
+      backdrop-filter: blur(14px);
+    }
+
+    .ascii-card pre,
+    .code-block,
+    .flow-block {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: var(--mono);
+      line-height: 1.55;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.8rem;
+      margin-top: 1.2rem;
+    }
+
+    .metric {
+      background: rgba(8, 16, 30, 0.72);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 0.95rem;
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 1.35rem;
+      color: var(--accent);
+    }
+
+    .metric span {
+      display: block;
+      margin-top: 0.2rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .section {
+      margin-top: 1.5rem;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.9rem;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 42rem;
+      line-height: 1.6;
+    }
+
+    .flow-grid,
+    .module-grid,
+    .code-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.2rem;
+    }
+
+    .flow-step {
+      position: relative;
+      padding: 1.2rem;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(14, 26, 44, 0.92), rgba(9, 17, 30, 0.92));
+    }
+
+    .flow-step .phase {
+      color: var(--accent-2);
+      font-size: 0.8rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .flow-step h3 {
+      margin-top: 0.55rem;
+      font-size: 1.25rem;
+    }
+
+    .flow-step ul {
+      margin: 0.85rem 0 0;
+      padding-left: 1.1rem;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .wide {
+      grid-column: 1 / -1;
+    }
+
+    .module {
+      padding: 1.1rem;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(8, 15, 27, 0.82);
+    }
+
+    .module p {
+      margin: 0.55rem 0 0;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .code-slot {
+      border: 1px dashed rgba(121, 184, 255, 0.38);
+      border-radius: 20px;
+      background: rgba(5, 11, 20, 0.74);
+      overflow: hidden;
+    }
+
+    .code-slot header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.9rem 1rem;
+      border-bottom: 1px solid var(--line);
+      background: rgba(13, 24, 41, 0.86);
+      font-family: var(--mono);
+      font-size: 0.92rem;
+    }
+
+    .tag {
+      color: var(--warn);
+      font-size: 0.78rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .code-block {
+      padding: 1rem;
+      min-height: 14rem;
+      color: #cfe0ff;
+    }
+
+    .footer-note {
+      margin-top: 1rem;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    @media (max-width: 900px) {
+      .hero-grid,
+      .flow-grid,
+      .module-grid,
+      .code-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .frame {
+        width: min(100% - 1rem, 1180px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="frame">
+    <section class="hero">
+      <span class="eyebrow">SENTINEL-HV</span>
+      <h1>Operators are standing by.</h1>
+      <p class="subtitle">
+        A standalone architecture page for your local hypervisor project. This gives the repo a clear
+        place to present the concept, map the execution flow, and reserve structured slots where your own
+        code and modules can be inserted later.
+      </p>
+
+      <div class="hero-grid">
+        <div class="ascii-card">
+<pre>⚡═══════════════════⚡
+║   SENTINEL-HV     ║
+║ "Operators are    ║
+║   standing by."   ║
+⚡═══════════════════⚡
+  \  |  /
+   \ | /
+   ┌─┐
+   │ │   &lt;-- fractured shield
+   └─┘</pre>
+          <div class="metrics">
+            <div class="metric">
+              <strong>5</strong>
+              <span>Pipeline phases</span>
+            </div>
+            <div class="metric">
+              <strong>4</strong>
+              <span>Code insertion zones</span>
+            </div>
+            <div class="metric">
+              <strong>1</strong>
+              <span>Local concept page</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="section-head">
+            <h2>Purpose</h2>
+          </div>
+          <p class="footer-note">
+            Use this page as the presentation shell around the repo. It is intentionally separated from the
+            existing scanner so you can evolve the design, swap modules, and paste in your own implementation
+            notes without disturbing the current shell scripts.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Software Flow</h2>
+            <p>A more structured flow that turns the project into a staged system rather than a single scan pass.</p>
+          </div>
+        </div>
+
+        <div class="flow-grid">
+          <article class="flow-step">
+            <span class="phase">Phase 0</span>
+            <h3>Deployment</h3>
+            <ul>
+              <li>Package a local agent or module set.</li>
+              <li>Define invocation parameters and target scope.</li>
+              <li>Record launch metadata and session identifiers.</li>
+            </ul>
+          </article>
+
+          <article class="flow-step">
+            <span class="phase">Phase 1</span>
+            <h3>Profiling</h3>
+            <ul>
+              <li>Collect platform indicators, virtualization artifacts, and environment signals.</li>
+              <li>Normalize findings into a target profile.</li>
+              <li>Emit `target_profile.json` or equivalent metadata.</li>
+            </ul>
+          </article>
+
+          <article class="flow-step">
+            <span class="phase">Phase 2</span>
+            <h3>Scanning</h3>
+            <ul>
+              <li>Run structured checks by version, capability, and configuration.</li>
+              <li>Associate findings with a local ruleset or advisory dataset.</li>
+              <li>Emit a normalized report payload for downstream analysis.</li>
+            </ul>
+          </article>
+
+          <article class="flow-step">
+            <span class="phase">Phase 3</span>
+            <h3>Decision Engine</h3>
+            <ul>
+              <li>Correlate evidence across platform, service, and policy layers.</li>
+              <li>Apply classification rules and confidence scoring.</li>
+              <li>Select follow-on modules based on the evidence state.</li>
+            </ul>
+          </article>
+
+          <article class="flow-step wide">
+            <span class="phase">Phase 4</span>
+            <h3>Reporting and Output</h3>
+            <ul>
+              <li>Generate human-readable output, machine-readable JSON, and module summaries.</li>
+              <li>Store artifacts in a predictable local structure.</li>
+              <li>Preserve enough context for future amendments, removals, or replacements.</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Module Map</h2>
+            <p>These module blocks give your future code a clean place to land without forcing changes into the current Bash entrypoints.</p>
+          </div>
+        </div>
+
+        <div class="module-grid">
+          <article class="module">
+            <h3>Profiler Module</h3>
+            <p>Responsible for environment fingerprints, virtualization indicators, OS context, and host-guest surface mapping.</p>
+          </article>
+          <article class="module">
+            <h3>Scanner Module</h3>
+            <p>Runs the main checking engine and records structured findings keyed by target, capability, and evidence source.</p>
+          </article>
+          <article class="module">
+            <h3>Correlation Module</h3>
+            <p>Scores findings, resolves conflicts, groups evidence, and determines the most likely target role or platform state.</p>
+          </article>
+          <article class="module">
+            <h3>Reporting Module</h3>
+            <p>Builds terminal summaries, JSON artifacts, and future HTML or markdown outputs from the normalized result object.</p>
+          </article>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="section-head">
+          <div>
+            <h2>Code Placement</h2>
+            <p>Reserved slots where your own code can be dropped in later. These are placeholders only, so the page is ready before you finalize what stays or goes.</p>
+          </div>
+        </div>
+
+        <div class="code-grid">
+          <section class="code-slot">
+            <header>
+              <span>slot-01 / profiler</span>
+              <span class="tag">paste here</span>
+            </header>
+            <pre class="code-block">// Insert your profiling code here.
+// Suggested responsibility:
+// - target fingerprinting
+// - platform detection
+// - environment metadata output</pre>
+          </section>
+
+          <section class="code-slot">
+            <header>
+              <span>slot-02 / scanner</span>
+              <span class="tag">paste here</span>
+            </header>
+            <pre class="code-block">// Insert your scan engine here.
+// Suggested responsibility:
+// - rule execution
+// - target checks
+// - result collection</pre>
+          </section>
+
+          <section class="code-slot">
+            <header>
+              <span>slot-03 / correlation</span>
+              <span class="tag">paste here</span>
+            </header>
+            <pre class="code-block">// Insert your correlation logic here.
+// Suggested responsibility:
+// - confidence scoring
+// - signal weighting
+// - final classification</pre>
+          </section>
+
+          <section class="code-slot">
+            <header>
+              <span>slot-04 / reporting</span>
+              <span class="tag">paste here</span>
+            </header>
+            <pre class="code-block">// Insert your reporting/output code here.
+// Suggested responsibility:
+// - terminal summary
+// - JSON serialization
+// - artifact export</pre>
+          </section>
+        </div>
+
+        <p class="footer-note">
+          Open this file locally in a browser to review the layout, then we can amend the sections or wire it into a fuller interface later.
+        </p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

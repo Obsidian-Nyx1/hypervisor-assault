@@ -117,6 +117,7 @@ declare -A HYPERVISOR_BANNERS=(
 
 GUEST_VM_PORTS="22 80 443 445 3389 21 25 53 110 143 993 995 1433 1521 3306 5432 6379 8080 8443"
 HYPERVISOR_MGMT_PORTS="80 111 139 443 445 548 902 903 2179 2375 2376 3128 4172 427 5000 5432 5900 5901 5985 5986 6443 8006 8080 8090 8100 8443 8700 8774 8776 8778 8899 9090 9440 9443 9696 10250 13007 16509 16514 18083 2020 2030"
+COMMON_HOST_PORTS="21,22,25,53,80,110,111,123,135,139,143,389,443,445,465,587,993,995,1433,1521,2049,2375,2376,3128,3306,3389,4172,5000,5432,5900-5910,5985,5986,6379,6443,8006,8080,8090,8100,8443,8700,8774,8776,8778,8899,9090,9440,9443,9696,10250,13007,16509,16514,18083,2020,2030"
 
 # =============================================================================
 # PRINT BANNER
@@ -182,7 +183,7 @@ discover_hypervisor() {
     local -a ev_paths=()
     local -a ev_versions=()
     
-    echo -e "\n${PURPLE}[🔍] Hypervisor Discovery on $target${NC}"
+    echo -e "\n${PURPLE}[🔍] Hypervisor Discovery on $target${NC}" >&2
     
     {
         echo ""
@@ -193,7 +194,7 @@ discover_hypervisor() {
     
     # Method 1: Port-based detection
     scans_performed+=("Port-based detection (nc connect checks)")
-    echo -e "${CYAN}  ├─[1/5] Checking hypervisor-specific ports...${NC}"
+    echo -e "${CYAN}  ├─[1/5] Checking hypervisor-specific ports...${NC}" >&2
     {
         echo ""
         echo "--- Port-Based Detection ---"
@@ -217,7 +218,7 @@ discover_hypervisor() {
     
     # Method 2: Banner grabbing
     scans_performed+=("HTTP(S) header/banner grabbing (curl)")
-    echo -e "${CYAN}  ├─[2/5] Grabbing banners and headers...${NC}"
+    echo -e "${CYAN}  ├─[2/5] Grabbing banners and headers...${NC}" >&2
     {
         echo ""
         echo "--- Banner Grabbing ---"
@@ -243,7 +244,7 @@ discover_hypervisor() {
     
     # Method 3: SSL Certificate inspection
     scans_performed+=("SSL certificate inspection (openssl x509)")
-    echo -e "${CYAN}  ├─[3/5] Inspecting SSL certificates...${NC}"
+    echo -e "${CYAN}  ├─[3/5] Inspecting SSL certificates...${NC}" >&2
     {
         echo ""
         echo "--- SSL Certificate Analysis ---"
@@ -274,7 +275,7 @@ discover_hypervisor() {
     
     # Method 4: Web path probing
     scans_performed+=("Web path probing (curl status checks)")
-    echo -e "${CYAN}  ├─[4/5] Probing hypervisor web paths...${NC}"
+    echo -e "${CYAN}  ├─[4/5] Probing hypervisor web paths...${NC}" >&2
     {
         echo ""
         echo "--- Web Path Probing ---"
@@ -298,7 +299,7 @@ discover_hypervisor() {
     # Method 5: Version fingerprinting
     if [ -n "$detected_hv" ]; then
         scans_performed+=("Version fingerprinting (service/API queries)")
-        echo -e "${CYAN}  └─[5/5] Fingerprinting exact version...${NC}"
+        echo -e "${CYAN}  └─[5/5] Fingerprinting exact version...${NC}" >&2
         {
             echo ""
             echo "--- Version Fingerprinting ---"
@@ -341,7 +342,7 @@ discover_hypervisor() {
         esac
     fi
     
-    echo -e "${GREEN}  └─✓ Detection complete. Confidence: $confidence%${NC}"
+    echo -e "${GREEN}  └─✓ Detection complete. Confidence: $confidence%${NC}" >&2
 
     {
         echo ""
@@ -397,7 +398,7 @@ classify_target_role() {
     local rationale=""
     local top_risk_layer="Unknown"
 
-    echo -e "${CYAN}  ├─ Assessing whether $target is a hypervisor host, management plane, or guest VM...${NC}"
+    echo -e "${CYAN}  ├─ Assessing whether $target is a hypervisor host, management plane, or guest VM...${NC}" >&2
 
     for port in $HYPERVISOR_MGMT_PORTS; do
         if timeout 2 nc -z "$target" "$port" >/dev/null 2>&1; then
@@ -432,10 +433,14 @@ classify_target_role() {
         role="Likely hypervisor management plane"
         top_risk_layer="Hypervisor layer"
         rationale="Control-plane product detected; compromise would affect multiple guest systems."
-    elif [ -z "$hv_type" ] && [ "$guest_hits" -ge 2 ] && [ "$mgmt_hits" -eq 0 ]; then
+    elif [ -z "$hv_type" ] && [ "$guest_hits" -ge 1 ] && [ "$mgmt_hits" -le 1 ]; then
         role="Likely guest VM or general-purpose host"
         top_risk_layer="Guest layer"
-        rationale="General guest-service exposure without strong hypervisor management indicators."
+        rationale="Reachable host with guest-style services and no strong hypervisor management indicators."
+    elif [ -z "$hv_type" ] && [ "$guest_hits" -ge 1 ] && [ "$mgmt_hits" -ge 1 ]; then
+        role="Likely virtualized host or mixed-purpose system"
+        top_risk_layer="Guest layer"
+        rationale="The target exposes both workload services and some management-like ports, but not enough evidence to call it a hypervisor."
     elif [ -n "$hv_type" ] && [ "${confidence:-0}" -lt 45 ] && [ "$guest_hits" -ge "$mgmt_hits" ]; then
         role="Possibly guest VM with virtualization artifacts"
         top_risk_layer="Guest layer"
@@ -501,6 +506,46 @@ write_risk_layer_summary() {
         echo "=========================="
         echo ""
     } >> "$output_file"
+}
+
+# =============================================================================
+# GUEST / GENERAL HOST SCAN
+# =============================================================================
+
+generic_host_scan() {
+    local target="$1"
+    local output_file="$2"
+    local target_role="$3"
+
+    echo -e "${YELLOW}[!] No strong hypervisor match. Running guest/general-host scan...${NC}"
+
+    {
+        echo ""
+        echo "═══════════════════════════════════════════════════════════════════════"
+        echo "GUEST / GENERAL HOST SCAN"
+        echo "═══════════════════════════════════════════════════════════════════════"
+        echo "Scans performed:"
+        echo "  - nmap -sV --version-all (common guest + management ports)"
+        echo "  - nmap -O (OS detection hints)"
+        echo "  - HTTP(S) header checks on common web ports"
+        echo "  - Guest-vs-management interpretation using exposed services"
+        echo ""
+        echo "Role-guided interpretation:"
+        echo "  - Current classification: ${target_role:-Inconclusive}"
+        echo ""
+        echo "--- Service Scan ---"
+        nmap -p "$COMMON_HOST_PORTS" -sV --version-all "$target" -oN - 2>/dev/null
+        echo ""
+        echo "--- Operating System Hints ---"
+        nmap -O "$target" -oN - 2>/dev/null | grep -E "OS details|Running|OS guess|Device type"
+        echo ""
+        echo "--- Web Headers ---"
+        for port in 80 443 8080 8443 8006 9443; do
+            echo "[Port $port]"
+            curl -sk "https://$target:$port" -I 2>/dev/null | head -5
+            curl -sk "http://$target:$port" -I 2>/dev/null | head -5
+        done
+    } >> "$output_file" 2>/dev/null
 }
 
 # =============================================================================
@@ -857,34 +902,11 @@ scan_target() {
     top_risk_layer=$(echo "$role_assessment" | cut -d'|' -f2)
     role_rationale=$(echo "$role_assessment" | cut -d'|' -f3-)
     
-    # PHASE 2: If hypervisor found, do deep dive
+    # PHASE 2: Route to the right scan path
     if [ -n "$hv_type" ] && [ "$confidence" -gt 30 ]; then
         deep_hypervisor_scan "$target" "$hv_type" "$output_file"
     else
-        echo -e "${YELLOW}[!] No hypervisor detected with confidence >30%. Running generic scan...${NC}"
-        {
-            echo ""
-            echo "═══════════════════════════════════════════════════════════════════════"
-            echo "GENERIC SCAN (No hypervisor detected)"
-            echo "═══════════════════════════════════════════════════════════════════════"
-            echo "Scans performed:"
-            echo "  - nmap -sV --version-all (hypervisor port database)"
-            echo "  - nmap -O (OS detection)"
-            echo ""
-            
-            # Still scan common hypervisor ports
-            all_ports=""
-            for ports in "${HYPERVISOR_PORTS[@]}"; do
-                all_ports="${all_ports},${ports}"
-            done
-            all_ports="${all_ports#,}"
-            
-            nmap -p "$all_ports" -sV --version-all "$target" -oN - 2>/dev/null
-            
-            # Check for any virtualization hints
-            nmap -O "$target" -oN - 2>/dev/null | grep -i "virtual\|vmware\|hyperv\|kvm\|xen"
-            
-        } >> "$output_file" 2>/dev/null
+        generic_host_scan "$target" "$output_file" "$target_role"
     fi
 
     write_risk_layer_summary "$target" "$target_role" "$hv_type" "$confidence" "$output_file"
